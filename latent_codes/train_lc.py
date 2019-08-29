@@ -1,6 +1,8 @@
 # python3.7
 """Retrains VGG-16 to generate latent codes.
 """
+import sys
+import os
 import os.path
 import argparse
 import cv2
@@ -23,13 +25,13 @@ from torch.utils.data import Dataset
 import torchvision
 from torchvision import datasets, models, transforms
 
+sys.path.append(os.path.join(os.getcwd(), "../"))
+
 from models.model_settings import MODEL_POOL
 from models.pggan_generator import PGGANGenerator
 from models.stylegan_generator import StyleGANGenerator
 from utils.logger import setup_logger
 from utils.manipulator import linear_interpolate
-
-import vgg_face_dag
 
 TRAIN = 'train'
 VAL = 'val'
@@ -243,43 +245,6 @@ def train_model(vgg, gan_model, dataloaders, dataset_sizes, criterion, optimizer
     vgg.load_state_dict(best_model_wts)
     return vgg
 
-def visualize_model(vgg_model, gan_model, epoch, num_examples=3, **kwargs):
-  vgg_model.train(False)
-  vgg_model.eval()
-  latent_codes = gan_model.easy_sample(num_examples, **kwargs)
-  outputs = gan_model.easy_synthesize(latent_codes, **kwargs)
-  gan_output_images = []
-  for image in outputs['image']:
-    # transform image to 224x224 for rest of uses
-    resized = cv2.resize(image[:, :, ::-1], (224,224))
-    gan_output_images.append(resized)
-
-  my_latent_codes = []
-  for image in gan_output_images:
-    tensor = toTensor(image).unsqueeze(0)
-    tensor = tensor.to('cuda')
-    image_latent_codes = vgg_model(tensor)
-    my_latent_codes.append(image_latent_codes.cpu().detach().numpy())
-
-  # import pdb; pdb.set_trace()
-  secondary_gan_output_images = []
-  secondary_outputs = gan_model.easy_synthesize(np.vstack(my_latent_codes), **kwargs)
-  for image in secondary_outputs['image']:
-    resized = cv2.resize(image[:, :, ::-1], (224,224))
-    secondary_gan_output_images.append(resized)
-
-  fig = plt.figure()
-  for i, (gan_img, secondary_img) in enumerate(zip(gan_output_images, secondary_gan_output_images)):
-    ax = fig.add_subplot(num_examples, 2, i*2 + 1)
-    ax.imshow(cv2.cvtColor(gan_img, cv2.COLOR_BGR2RGB))
-    ax.title.set_text('GAN image')
-
-    ax2 = fig.add_subplot(num_examples, 2, i*2 + 2)
-    ax2.imshow(cv2.cvtColor(secondary_img, cv2.COLOR_BGR2RGB))
-    ax2.title.set_text('Latent-codes image')
-  fig.savefig(f'model_viz_epoch_{epoch}.png')
-  del fig
-
 class VGG9(nn.Module):
   def __init__(self, original_model):
     super(VGG9, self).__init__()
@@ -360,13 +325,14 @@ def main():
   logger.info(f'Preparing VGG.')
   # Load the pretrained model from pytorch
   #stock_vgg = models.vgg16()
-  stock_vgg = models.vgg16_bn()
+  stock_vgg = models.vgg16()
   #stock_vgg = vgg_face_dag.Vgg_face_dag()
   if os.path.isfile(args.pretrained_vgg_path):
     logger.info(f'  Load vgg-16 state from `{args.pretrained_vgg_path}`.')
     stock_vgg.load_state_dict(torch.load(args.pretrained_vgg_path))
   else:
     raise NotImplementedError(f'  VGG16 initialized randomly. Is this really what you want?')
+  import pdb; pdb.set_trace()
   vgg = VGG9(stock_vgg)
 
   start_epoch = 0
